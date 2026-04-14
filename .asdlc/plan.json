@@ -1,0 +1,36 @@
+{
+  "strategy": "Single-Phase",
+  "overview": "Since witest28-1 consists of exactly one component with no external dependencies, the entire implementation is completed in a single phase. There are no upstream services to build first, no API contracts to negotiate between components, and no data layers to establish — the React/TypeScript SPA is fully self-contained and served directly from an Nginx container.",
+  "phases": [
+    {
+      "phase": 1,
+      "name": "Foundation \u0026 Delivery",
+      "description": "The sole component of the system — a static React/TypeScript SPA served via Nginx — has no dependencies and constitutes the entire application. It is built and deployed in this single phase.",
+      "components": [
+        {
+          "name": "hello-world-web",
+          "componentType": "web-app",
+          "language": "TypeScript / React",
+          "deployment": "Docker",
+          "responsibilities": [
+            "Render a semantically correct, accessible 'Hello World' greeting page at the root path '/'.",
+            "Serve a /health endpoint returning HTTP 200 with JSON body {\"status\":\"ok\"} via Nginx configuration.",
+            "Handle undefined routes by rendering a React 404 page via React Router's catch-all route, avoiding 5xx errors.",
+            "Enforce security response headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy) and suppress server version disclosure via server_tokens off.",
+            "Produce a minified, self-contained static bundle (target well under 500 KB) using Vite's production build pipeline."
+          ],
+          "architectureContext": "This is the only component in the system. It is accessed directly by end users via a browser over HTTP/HTTPS (HTTPS termination handled at the ingress/load-balancer layer). Nginx serves the pre-built Vite dist artefacts and handles the /health route natively — no backend, database, or inter-service communication is involved.",
+          "keyConsiderations": [
+            "The Nginx error_page 404 directive routes unknown static assets to index.html, while React Router's wildcard route ('*') renders the NotFoundPage component — both layers must cooperate to avoid a mismatch between HTTP status codes and visual feedback.",
+            "server_tokens off must be verified in the final Docker image using curl -I to confirm the 'Server' header does not leak the Nginx version, satisfying requirement 11.",
+            "WCAG 2.1 Level A contrast compliance (#1a1a1a on #ffffff yields ~19:1 contrast ratio) should be validated with an automated tool (e.g., axe-core or Lighthouse) as part of the CI pipeline.",
+            "The multi-stage Dockerfile (Node 20 Alpine builder → Nginx 1.25 Alpine runtime) must be tested for correct COPY of the dist/ directory; a misconfigured path will result in a blank page with no build-time error.",
+            "Mobile viewport correctness (\u003cmeta name='viewport' content='width=device-width, initial-scale=1.0'\u003e) and cross-browser rendering (Chrome, Firefox, Safari, Edge) should be validated using a browser compatibility test or BrowserStack before marking the component complete."
+          ],
+          "apiContract": "openapi: 3.0.3\ninfo:\n  title: hello-world-web\n  description: Static Hello World web application served via Nginx.\n  version: 1.0.0\npaths:\n  /:\n    get:\n      summary: Hello World page\n      description: Returns the Hello World HTML page.\n      responses:\n        '200':\n          description: Successful HTML page response.\n          content:\n            text/html:\n              schema:\n                type: string\n  /health:\n    get:\n      summary: Health check\n      description: Returns 200 OK when the server is healthy.\n      responses:\n        '200':\n          description: Server is healthy.\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  status:\n                    type: string\n                    example: ok\n  /{path}:\n    get:\n      summary: Catch-all for undefined routes\n      parameters:\n        - name: path\n          in: path\n          required: true\n          schema:\n            type: string\n      responses:\n        '404':\n          description: Route not found.\n          content:\n            text/html:\n              schema:\n                type: string\n",
+          "dependencies": []
+        }
+      ]
+    }
+  ]
+}
