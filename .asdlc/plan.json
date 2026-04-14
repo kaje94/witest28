@@ -1,0 +1,36 @@
+{
+  "strategy": "Single-Phase",
+  "overview": "Since the witest28-8 system consists of exactly one self-contained component with no inter-service dependencies, the entire implementation is delivered in a single phase. There is no dependency graph to resolve, so all work can proceed immediately without waiting on any upstream services or shared infrastructure. This single-phase approach minimizes overhead and reflects the simplicity of the architecture.",
+  "phases": [
+    {
+      "phase": 1,
+      "name": "Foundation Service",
+      "description": "The sole component of the system — a self-contained Go HTTP service with no external dependencies. Implements all routes, security hardening, and packaging in one deliverable.",
+      "components": [
+        {
+          "name": "hello-world-service",
+          "componentType": "service",
+          "language": "Go",
+          "deployment": "Docker",
+          "responsibilities": [
+            "Serve a fully compliant Hello World HTML5 page at the root path (GET /) with WCAG 2.1 Level A accessibility and responsive layout.",
+            "Expose a health check endpoint (GET /health) returning a JSON status payload for container orchestration liveness probes.",
+            "Return a properly structured 404 HTML response for all undefined routes.",
+            "Strip server-identifying HTTP response headers (e.g. Server) to prevent internal version/path disclosure.",
+            "Package the application as a minimal distroless Docker image via a multi-stage build for a fast, secure container startup."
+          ],
+          "architectureContext": "This is the only component in the system and has no upstream or downstream service dependencies. It is directly accessed by end users via a browser (or ingress proxy in non-local environments) and by platform health-check mechanisms via /health. All logic — routing, HTML rendering, security middleware — is self-contained within this single Go binary.",
+          "keyConsiderations": [
+            "The net/http ServeMux treats '/' as a catch-all prefix; an explicit path equality check (r.URL.Path != \"/\") is required to prevent sub-paths from incorrectly matching the root handler and must fall through to a 404.",
+            "Only GET is a valid method for both '/' and '/health'; POST, PUT, DELETE, and other methods must be rejected with HTTP 405 Method Not Allowed to avoid silent misuse.",
+            "A response-writer middleware must overwrite or delete the 'Server' header on every outgoing response before WriteHeader is called, since Go's net/http sets this automatically.",
+            "The multi-stage Dockerfile must produce a CGO_ENABLED=0 static binary compatible with the distroless/static:nonroot base image — no shell, no libc, no extra attack surface.",
+            "The inline HTML must include a viewport meta tag and sufficient color contrast (body #111111 on #ffffff exceeds the 4.5:1 WCAG 2.1 Level AA ratio) to satisfy both responsiveness and accessibility requirements without any external assets that could slow page load."
+          ],
+          "apiContract": "openapi: 3.0.3\ninfo:\n  title: Hello World Service API\n  description: Serves the Hello World web page and health endpoint.\n  version: 1.0.0\npaths:\n  /:\n    get:\n      summary: Hello World page\n      description: Returns the main Hello World HTML page.\n      responses:\n        '200':\n          description: HTML page with Hello World greeting\n          content:\n            text/html:\n              schema:\n                type: string\n                example: '\u003c!DOCTYPE html\u003e\u003chtml lang=\"en\"\u003e\u003chead\u003e\u003ctitle\u003eHello World\u003c/title\u003e\u003c/head\u003e\u003cbody\u003e\u003ch1\u003eHello World\u003c/h1\u003e\u003c/body\u003e\u003c/html\u003e'\n  /health:\n    get:\n      summary: Health check\n      description: Returns 200 OK if the service is running.\n      responses:\n        '200':\n          description: Service is healthy\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  status:\n                    type: string\n                    example: ok\n  /{path}:\n    get:\n      summary: Catch-all 404\n      description: Returns 404 for any undefined route.\n      parameters:\n        - name: path\n          in: path\n          required: true\n          schema:\n            type: string\n      responses:\n        '404':\n          description: Route not found\n          content:\n            text/html:\n              schema:\n                type: string\n",
+          "dependencies": []
+        }
+      ]
+    }
+  ]
+}
