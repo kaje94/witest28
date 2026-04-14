@@ -1,0 +1,36 @@
+{
+  "strategy": "Bottom-Up",
+  "overview": "Since the architecture consists of a single, fully self-contained service with no external dependencies, the entire implementation is completed in one phase. A Bottom-Up strategy is applied by default — the sole component forms the foundation and the complete deliverable simultaneously. This ordering ensures the service is built, containerized, and ready for Kubernetes deployment in a single cohesive effort.",
+  "phases": [
+    {
+      "phase": 1,
+      "name": "Foundation Service",
+      "description": "The hello-world-service is the only component in the system and has no dependencies on any other component. It is implemented in full in this phase, covering HTTP routing, HTML rendering, security header middleware, health check endpoint, 404 handling, and Docker containerization.",
+      "components": [
+        {
+          "name": "hello-world-service",
+          "componentType": "service",
+          "language": "Go",
+          "deployment": "Docker",
+          "responsibilities": [
+            "Serve a responsive, centered 'Hello World' HTML page on the root path (/) with HTTP 200 and valid HTML document structure.",
+            "Apply all required HTTP security headers (X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy) on every outgoing response via middleware.",
+            "Expose a /health endpoint returning HTTP 200 with JSON body {\"status\": \"ok\"} for Kubernetes liveness and readiness probes.",
+            "Return a user-friendly HTTP 404 HTML error page for all undefined routes without exposing internal details or stack traces.",
+            "Enforce HTTP method validation (405 Method Not Allowed) on all defined routes and handle all requests within 500 ms under 100 concurrent users."
+          ],
+          "architectureContext": "This is the sole component in the system — it acts as both the backend logic layer and the content delivery layer. No other services call it internally; it is directly exposed to end users and the Kubernetes ingress (which terminates HTTPS). The /health route is consumed exclusively by Kubernetes liveness and readiness probes. Because there are no upstream dependencies, this service must be entirely self-sufficient at runtime.",
+          "keyConsiderations": [
+            "Route registration order matters with net/http's ServeMux: register /health as an exact path before the catch-all pattern so health check requests are never intercepted by the 404 handler.",
+            "The securityHeaders middleware must wrap the entire mux — not individual handlers — to guarantee headers are present on every response including 404s and 405s.",
+            "The multi-stage Dockerfile (golang:1.22-alpine builder → alpine:3.19 runtime) keeps the final image minimal and reduces attack surface; ensure the non-root appuser has execute permission on the compiled binary.",
+            "HTTP method enforcement (405) must be explicitly coded per handler since net/http's ServeMux does not natively differentiate by method — check r.Method at the top of each handler function.",
+            "Server timeouts (ReadTimeout: 5s, WriteTimeout: 10s, IdleTimeout: 60s) are critical for meeting the 500 ms SLA under 100 concurrent users and preventing resource exhaustion; do not omit them."
+          ],
+          "apiContract": "openapi: 3.0.3\ninfo:\n  title: Hello World Service API\n  description: Serves a Hello World HTML page and a health check endpoint.\n  version: 1.0.0\npaths:\n  /:\n    get:\n      summary: Hello World page\n      description: Returns a fully rendered HTML page displaying 'Hello World' with responsive layout and security headers.\n      responses:\n        '200':\n          description: Successful HTML page response\n          headers:\n            X-Content-Type-Options:\n              schema:\n                type: string\n                example: nosniff\n            X-Frame-Options:\n              schema:\n                type: string\n                example: DENY\n            X-XSS-Protection:\n              schema:\n                type: string\n                example: 1; mode=block\n            Referrer-Policy:\n              schema:\n                type: string\n                example: no-referrer\n          content:\n            text/html:\n              schema:\n                type: string\n                example: '\u003c!DOCTYPE html\u003e\u003chtml\u003e...\u003c/html\u003e'\n  /health:\n    get:\n      summary: Health check\n      description: Returns service health status for Kubernetes liveness and readiness probes.\n      responses:\n        '200':\n          description: Service is healthy\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  status:\n                    type: string\n                    example: ok\n  /{path}:\n    get:\n      summary: Catch-all 404\n      description: Returns a user-friendly 404 HTML page for any undefined route.\n      parameters:\n        - name: path\n          in: path\n          required: true\n          schema:\n            type: string\n      responses:\n        '404':\n          description: Page not found\n          content:\n            text/html:\n              schema:\n                type: string",
+          "dependencies": []
+        }
+      ]
+    }
+  ]
+}
