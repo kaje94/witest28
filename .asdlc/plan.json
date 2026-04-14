@@ -1,0 +1,36 @@
+{
+  "strategy": "Single-Phase",
+  "overview": "The witest28-7 architecture consists of a single, fully self-contained component with no external dependencies, making a single-phase implementation the only logical choice. The hello-world-web component encapsulates all routing, HTML rendering, security headers, and health checking within one Go binary, so there are no prerequisite services to stand up first. This approach allows the entire application to be built, tested, and deployed in one cohesive effort.",
+  "phases": [
+    {
+      "phase": 1,
+      "name": "Foundation \u0026 Full Application",
+      "description": "The entire application is a single Go HTTP server with no external dependencies, databases, or downstream services. All functionality — homepage rendering, 404 handling, health checks, and security header injection — is implemented in this one phase.",
+      "components": [
+        {
+          "name": "hello-world-web",
+          "componentType": "web-app",
+          "language": "Go / net/http",
+          "deployment": "Docker",
+          "responsibilities": [
+            "Serve the Hello World homepage at GET / with semantic HTML, inline CSS, and WCAG AA-compliant contrast ratios.",
+            "Return a user-friendly 404 HTML page with a homepage link for all unrecognised routes.",
+            "Expose a GET /health endpoint returning JSON {\"status\":\"ok\"} for liveness and readiness probes.",
+            "Inject all required HTTP security headers (CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy) on every response via middleware.",
+            "Reject non-GET requests to / and /health with HTTP 405, and suppress all internal error details from response bodies."
+          ],
+          "architectureContext": "This is the sole component in the system — it is the application. It receives all inbound HTTP traffic directly (via a reverse proxy or load balancer in production) and has no downstream services, databases, or external APIs to call. Nothing depends on it internally; external infrastructure (e.g., a container orchestrator) depends on the /health endpoint for liveness probing.",
+          "keyConsiderations": [
+            "Path disambiguation: Go's net/http ServeMux root pattern '/' acts as a catch-all. The root handler must explicitly check r.URL.Path == \"/\" and return the 404 page (with WriteHeader(404)) for any other unmatched path to avoid masking the dedicated catch-all.",
+            "Method enforcement: Both the / and /health handlers must check r.Method == http.MethodGet and return HTTP 405 for all other verbs — net/http does not enforce this automatically.",
+            "Security headers middleware must wrap every registered handler, including /health, before the mux is passed to http.ListenAndServe — apply it as a single top-level wrapper to avoid per-handler repetition.",
+            "No stack traces in responses: all internal errors must be logged with log.Println and responded to with a generic message only — never fmt.Fprintf(w, err.Error()) or similar patterns.",
+            "Multi-stage Dockerfile (golang:1.22-alpine builder → alpine:3.19 runtime, non-root 'app' user) keeps the final image minimal and reduces the attack surface; verify the binary is statically linked or that required libc is present in the alpine runtime stage."
+          ],
+          "apiContract": "openapi: 3.0.3\ninfo:\n  title: Hello World Web\n  description: Minimal Hello World web application serving HTML pages.\n  version: 1.0.0\npaths:\n  /:\n    get:\n      summary: Hello World homepage\n      description: Returns the Hello World HTML page with HTTP 200.\n      responses:\n        '200':\n          description: HTML page displaying Hello World greeting.\n          content:\n            text/html:\n              schema:\n                type: string\n  /health:\n    get:\n      summary: Health check\n      description: Liveness and readiness probe endpoint.\n      responses:\n        '200':\n          description: Service is healthy.\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  status:\n                    type: string\n                    example: ok\n  /{path}:\n    get:\n      summary: Catch-all 404 handler\n      description: Returns a user-friendly 404 page for any unrecognised route.\n      parameters:\n        - name: path\n          in: path\n          required: true\n          schema:\n            type: string\n      responses:\n        '404':\n          description: Page not found. Returns HTML with a link back to the homepage.\n          content:\n            text/html:\n              schema:\n                type: string\n",
+          "dependencies": []
+        }
+      ]
+    }
+  ]
+}
