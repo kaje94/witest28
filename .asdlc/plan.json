@@ -1,0 +1,36 @@
+{
+  "strategy": "Bottom-Up",
+  "overview": "The architecture consists of a single, self-contained Go service with no external dependencies, making a one-phase Bottom-Up plan the natural choice. Since hello-world-service depends on nothing else, it can be built, tested, and deployed immediately without any prerequisite infrastructure. This approach minimizes complexity and gets the system to a fully operational state in a single build phase.",
+  "phases": [
+    {
+      "phase": 1,
+      "name": "Foundation Service",
+      "description": "The sole component in the system — a self-contained Go HTTP service with no dependencies on other components. It is built and deployed directly as a minimal Docker image.",
+      "components": [
+        {
+          "name": "hello-world-service",
+          "componentType": "service",
+          "language": "Go",
+          "deployment": "Docker",
+          "responsibilities": [
+            "Serve a fully valid, accessible, responsive Hello World HTML page at the root route (GET /)",
+            "Expose a JSON health check endpoint at GET /health returning {\"status\": \"ok\"}",
+            "Apply HTTP security headers (X-Content-Type-Options, X-Frame-Options, CSP, Referrer-Policy, HSTS) and suppress the Server header on every response via middleware",
+            "Log all requests as structured JSON (timestamp, method, path, status code, latency) to stdout via logging middleware",
+            "Handle unrecognized routes with a 404 HTML page and recover from panics with a 500 HTML page, never exposing internal details to clients"
+          ],
+          "architectureContext": "This is the only component in the system. All public internet traffic flows directly to this service, which handles routing, rendering, security, observability, and error handling internally. There are no upstream or downstream service calls — the service is entirely self-sufficient and is exposed via a Kubernetes deployment behind a load balancer.",
+          "keyConsiderations": [
+            "Use a locally scoped http.ServeMux (never http.DefaultServeMux) to prevent accidental route pollution from any transitively imported packages.",
+            "Middleware must be layered in the correct order — logging wraps security headers, which wraps panic recovery, which wraps the mux — so that status codes and latency are captured accurately after all headers are written.",
+            "The scratch-based Docker image means no shell, no OS utilities, and no libc; the binary must be compiled with CGO_ENABLED=0 and statically linked using -ldflags='-s -w' and -trimpath to also strip debug symbols and build paths.",
+            "The Server response header must be actively suppressed in the security headers middleware before any handler writes a response, as Go's net/http sets it automatically and it would otherwise reveal runtime information.",
+            "Inline CSS must guarantee WCAG AA contrast ratio (≥ 4.5:1) — a dark-on-white scheme (e.g. #111 on #fff) is sufficient; no external fonts or stylesheets may be loaded to satisfy the default-src 'self' CSP policy."
+          ],
+          "apiContract": "openapi: 3.0.3\ninfo:\n  title: Hello World Service\n  description: A simple Hello World web service serving an HTML page and a health endpoint.\n  version: 1.0.0\npaths:\n  /:\n    get:\n      summary: Hello World page\n      description: Returns the Hello World HTML page.\n      responses:\n        '200':\n          description: Successful HTML response\n          headers:\n            X-Content-Type-Options:\n              schema:\n                type: string\n                example: nosniff\n            X-Frame-Options:\n              schema:\n                type: string\n                example: DENY\n            Content-Security-Policy:\n              schema:\n                type: string\n                example: \"default-src 'self'\"\n            Referrer-Policy:\n              schema:\n                type: string\n                example: no-referrer\n            Strict-Transport-Security:\n              schema:\n                type: string\n                example: max-age=31536000; includeSubDomains\n          content:\n            text/html:\n              schema:\n                type: string\n                example: \"\u003c!DOCTYPE html\u003e\u003chtml\u003e\u003chead\u003e\u003ctitle\u003eHello World\u003c/title\u003e\u003c/head\u003e\u003cbody\u003e\u003ch1\u003eHello, World!\u003c/h1\u003e\u003c/body\u003e\u003c/html\u003e\"\n        '404':\n          description: Not Found — user-friendly error page\n          content:\n            text/html:\n              schema:\n                type: string\n        '500':\n          description: Internal Server Error — user-friendly error page\n          content:\n            text/html:\n              schema:\n                type: string\n  /health:\n    get:\n      summary: Health check\n      description: Returns service health status.\n      responses:\n        '200':\n          description: Service is healthy\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  status:\n                    type: string\n                    example: ok\n",
+          "dependencies": []
+        }
+      ]
+    }
+  ]
+}
